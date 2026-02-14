@@ -196,7 +196,7 @@ ALSFRS_ITEMS = {
         1: "1. Pode dormir somente sentado",
         0: "0. Não consegue dormir",
     }),
-    12: ("IResp", {
+    12: ("Insuficiência respiratória", {
         4: "4. Nenhuma",
         3: "3. Uso intermitente do BIPAP",
         2: "2. Uso contínuo do BIPAP à noite",
@@ -391,7 +391,7 @@ if st.session_state.get("_do_als_import", False):
 st.title("Calculadora ALSFRS-R")
 st.markdown(
     "<div style='font-size:22px; color:#666; margin-top:-0.5rem; margin-bottom:1rem;'>"
-    "seleção de 0–4 por item (12 itens) + export/import"
+    "Cálculo automatizado da escala ALSFRS-R"
     "</div>",
     unsafe_allow_html=True,
 )
