@@ -81,9 +81,9 @@ def inline_label_radio(
     index_if_missing=None,
 ):
     """
-    IMPORTANT: To avoid Streamlit warning:
+    IMPORTANT: Avoid Streamlit warning:
     "widget with key ... was created with a default value but also had its value set via the Session State API"
-    we only pass 'index' when the key is NOT already in st.session_state.
+    We only pass 'index' when the key is NOT already in st.session_state.
     """
     c_label, c_radio, _fill = st.columns([3.2, 6.0, 10.0], vertical_alignment="top")
     with c_label:
@@ -102,7 +102,7 @@ def inline_label_radio(
 def _all_item_keys():
     return [f"als_{i}" for i in [1,2,3,4,5,6,7,8,9,10,11,12]] + ["als_5_mode", "als_import_text"]
 
-def _reset_alsfrs():
+def _reset_():
     for k in _all_item_keys():
         st.session_state.pop(k, None)
 
@@ -160,7 +160,8 @@ ALSFRS_ITEMS = {
         1: "1. Necessita do cuidador para autocuidado",
         0: "0. Dependência total",
     }),
-    7: ("Cama", {
+    # ✅ TROCA: "Cama" -> "Lençol"
+    7: ("Lençol", {
         4: "4. Normal",
         3: "3. Consegue lento e desajeitado, mas sem ajuda",
         2: "2. Pode se transferir sozinho e ajustar o lençol, mas com grande dificuldade",
@@ -207,8 +208,9 @@ ALSFRS_ITEMS = {
 ORDER = [1,2,3,4,5,6,7,8,9,10,11,12]
 LABELS_FOR_OUTPUT = {
     1:"Fala", 2:"Salivação", 3:"Deglutição", 4:"Escrita",
-    5:"Alimentação", 6:"Vestuário", 7:"Cama", 8:"Andar",
-    9:"Escadas", 10:"Dispneia", 11:"Ortopneia", 12:"IResp"
+    5:"Alimentação", 6:"Vestuário",
+    7:"Lençol",  # ✅ aqui também
+    8:"Andar", 9:"Escadas", 10:"Dispneia", 11:"Ortopneia", 12:"IResp"
 }
 
 # =========================================================
@@ -259,7 +261,8 @@ LABEL_SYNONYMS = {
     4: ["escrita"],
     5: ["aliment", "utens", "gtt", "gastro", "gastrost"],
     6: ["vestu", "higien"],
-    7: ["cama", "virar", "lencol", "lençol"],
+    # ✅ inclui "lencol"/"lençol" (e mantém "cama" para compatibilidade)
+    7: ["lencol", "lençol", "cama", "virar"],
     8: ["andar", "marcha", "deambul"],
     9: ["escad", "subir"],
     10: ["dispne", "falta de ar"],
@@ -268,7 +271,6 @@ LABEL_SYNONYMS = {
 }
 
 def _try_parse_numbered_tokens(text: str):
-    # "1.4 / 2.3 / ... / 5a.2 / ... / 12.4"
     t = text or ""
     patt = re.compile(r"(?i)\b(5a|5b|10|11|12|[1-9])\s*[.:]\s*([0-4])\b")
     matches = list(patt.finditer(t))
@@ -294,7 +296,6 @@ def _try_parse_numbered_tokens(text: str):
     return got, (mode5 or get_item5_mode())
 
 def _try_parse_scores_only(text: str):
-    # "ALSFRS: 35 = 4 / 3 / ... / 4"
     t = text or ""
     t2 = re.sub(r"(?i)alsfrs\s*:\s*\d+\s*=", "", t).strip()
     scores = re.findall(r"\b([0-4])\b", t2)
@@ -304,7 +305,6 @@ def _try_parse_scores_only(text: str):
     return got, get_item5_mode()
 
 def _try_parse_labeled(text: str):
-    # "ALSFRS: 35 = Fala.4 / ... / IResp.4"
     t = text or ""
     if "/" not in t and "alsfrs" not in _norm(t):
         return None
@@ -391,12 +391,11 @@ if st.session_state.get("_do_als_import", False):
 st.title("Calculadora ALSFRS-R")
 st.markdown(
     "<div style='font-size:22px; color:#666; margin-top:-0.5rem; margin-bottom:1rem;'>"
-    "Cálculo automatizado da escala ALSFRS-R"
+    "seleção de 0–4 por item (12 itens) + export/import"
     "</div>",
     unsafe_allow_html=True,
 )
 
-# default do modo do item 5
 st.session_state.setdefault("als_5_mode", "5a")
 
 def render_item(item_number: int):
@@ -405,47 +404,45 @@ def render_item(item_number: int):
     if item_number == 5:
         mode5 = get_item5_mode()
         label5, opts5 = ALSFRS_ITEMS[mode5]
-
-        # Item 5 (radio do score)
         inline_label_radio(
             f"5{'a' if mode5=='5a' else 'b'}. {label5}",
-            options=[4,3,2,1,0],
+            options=[4, 3, 2, 1, 0],
             format_func=lambda v: opts5[v],
             key=key,
-            index_if_missing=None,  # sem seleção inicial
+            index_if_missing=None,
         )
         return
 
     label, opts = ALSFRS_ITEMS[item_number]
     inline_label_radio(
         f"{item_number}. {label}",
-        options=[4,3,2,1,0],
+        options=[4, 3, 2, 1, 0],
         format_func=lambda v: opts[v],
         key=key,
-        index_if_missing=None,  # sem seleção inicial
+        index_if_missing=None,
     )
 
 # -------------------------
-# SCALE (single column)
+# SCALE (single column) + separator line after each item
 # -------------------------
 st.subheader("Itens da escala")
 
 for i in ORDER:
-    # Coloca a seleção 5a/5b imediatamente acima do item 5
     if i == 5:
         st.markdown("**Configuração do item 5**")
         inline_label_radio(
             "Gastrostomia (GTT)",
             options=["5a", "5b"],
-            format_func=lambda v: "Sem gastrostomia (5a)" if v == "5a" else "Com gastrostomia (5b)",
+            format_func=lambda v: "Sem gastrostomia (5a → Alimentação)" if v == "5a" else "Com gastrostomia (5b → GTT)",
             key="als_5_mode",
-            # NÃO passamos index aqui (nem mesmo index_if_missing), porque:
-            # - st.session_state já tem default ("5a") ou valor importado
-            # - evita warning do Streamlit
+            index_if_missing=None,
         )
         st.markdown("---")
 
     render_item(i)
+
+    if i != ORDER[-1]:
+        st.divider()
 
 st.divider()
 st.subheader("Resultado")
