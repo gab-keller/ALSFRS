@@ -1,2 +1,2 @@
 # ALSFRS
-Auto
+Cálculo automático da escala ALS-FRS
