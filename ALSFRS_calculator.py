@@ -391,7 +391,7 @@ if st.session_state.get("_do_als_import", False):
 st.title("Calculadora ALSFRS-R")
 st.markdown(
     "<div style='font-size:22px; color:#666; margin-top:-0.5rem; margin-bottom:1rem;'>"
-    "seleção de 0–4 por item (12 itens) + export/import"
+    "Cálculo automatizado da escala ALSFRS-R"
     "</div>",
     unsafe_allow_html=True,
 )
@@ -437,7 +437,7 @@ for i in ORDER:
         inline_label_radio(
             "Gastrostomia (GTT)",
             options=["5a", "5b"],
-            format_func=lambda v: "Sem gastrostomia (5a → Alimentação)" if v == "5a" else "Com gastrostomia (5b → GTT)",
+            format_func=lambda v: "Sem gastrostomia (5a)" if v == "5a" else "Com gastrostomia (5b)",
             key="als_5_mode",
             # NÃO passamos index aqui (nem mesmo index_if_missing), porque:
             # - st.session_state já tem default ("5a") ou valor importado
