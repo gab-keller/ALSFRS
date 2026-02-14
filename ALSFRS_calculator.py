@@ -490,10 +490,10 @@ st.text_area(
     key="als_import_text",
     height=120,
     placeholder=(
-        "Novo formato: ALSFRS (02/2026): Fala.3 / ... / IResp.4 = 42\n"
-        "Formato antigo (labels): ALSFRS: 35 = Fala.4 / ... / IResp.4\n"
-        "Só números: ALSFRS: 35 = 4 / 3 / 3 / 2 / 2 / 3 / 3 / 2 / 1 / 4 / 4 / 4\n"
-        "Numerado: ALSFRS: 35 = 1.4 / 2.3 / ... / 12.4"
+        "ALSFRS (02/2026): Fala.3 / ... / IResp.4 = 42\n"
+        "ALSFRS: 35 = Fala.4 / ... / IResp.4\n"
+        "ALSFRS: 35 = 4 / 3 / 3 / 2 / 2 / 3 / 3 / 2 / 1 / 4 / 4 / 4\n"
+        "ALSFRS: 35 = 1.4 / 2.3 / ... / 12.4"
     ),
 )
 
