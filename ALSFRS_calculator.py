@@ -5,7 +5,7 @@ import streamlit as st
 st.set_page_config(page_title="Calculadora ALSFRS-R", layout="wide")
 
 # =========================================================
-# GLOBAL STYLES (mesmo estilo do seu template)
+# GLOBAL STYLES
 # =========================================================
 st.markdown(
     """
@@ -81,9 +81,9 @@ def inline_label_radio(
     index_if_missing=None,
 ):
     """
-    IMPORTANT: Avoid Streamlit warning:
+    Avoid Streamlit warning:
     "widget with key ... was created with a default value but also had its value set via the Session State API"
-    We only pass 'index' when the key is NOT already in st.session_state.
+    => only pass 'index' when the key is NOT already in st.session_state.
     """
     c_label, c_radio, _fill = st.columns([3.2, 6.0, 10.0], vertical_alignment="top")
     with c_label:
@@ -102,7 +102,7 @@ def inline_label_radio(
 def _all_item_keys():
     return [f"als_{i}" for i in [1,2,3,4,5,6,7,8,9,10,11,12]] + ["als_5_mode", "als_import_text"]
 
-def _reset_():
+def _reset_alsfrs():
     for k in _all_item_keys():
         st.session_state.pop(k, None)
 
@@ -160,7 +160,6 @@ ALSFRS_ITEMS = {
         1: "1. Necessita do cuidador para autocuidado",
         0: "0. Dependência total",
     }),
-    # ✅ TROCA: "Cama" -> "Lençol"
     7: ("Lençol", {
         4: "4. Normal",
         3: "3. Consegue lento e desajeitado, mas sem ajuda",
@@ -209,7 +208,7 @@ ORDER = [1,2,3,4,5,6,7,8,9,10,11,12]
 LABELS_FOR_OUTPUT = {
     1:"Fala", 2:"Salivação", 3:"Deglutição", 4:"Escrita",
     5:"Alimentação", 6:"Vestuário",
-    7:"Lençol",  # ✅ aqui também
+    7:"Lençol",
     8:"Andar", 9:"Escadas", 10:"Dispneia", 11:"Ortopneia", 12:"IResp"
 }
 
@@ -261,8 +260,8 @@ LABEL_SYNONYMS = {
     4: ["escrita"],
     5: ["aliment", "utens", "gtt", "gastro", "gastrost"],
     6: ["vestu", "higien"],
-    # ✅ inclui "lencol"/"lençol" (e mantém "cama" para compatibilidade)
-    7: ["lencol", "lençol", "cama", "virar"],
+    # sem acento (porque pn = _norm(...))
+    7: ["lencol", "cama", "virar"],
     8: ["andar", "marcha", "deambul"],
     9: ["escad", "subir"],
     10: ["dispne", "falta de ar"],
