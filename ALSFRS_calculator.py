@@ -72,19 +72,32 @@ def _strip_accents(s: str) -> str:
 def _norm(s: str) -> str:
     return _strip_accents((s or "").strip().lower())
 
-def inline_label_radio(label_text: str, options, format_func, key: str, index=None):
+def inline_label_radio(
+    label_text: str,
+    options,
+    format_func,
+    key: str,
+    *,
+    index_if_missing=None,
+):
+    """
+    IMPORTANT: To avoid Streamlit warning:
+    "widget with key ... was created with a default value but also had its value set via the Session State API"
+    we only pass 'index' when the key is NOT already in st.session_state.
+    """
     c_label, c_radio, _fill = st.columns([3.2, 6.0, 10.0], vertical_alignment="top")
     with c_label:
         st.markdown(f'<div class="inline-label">{label_text}</div>', unsafe_allow_html=True)
     with c_radio:
-        return st.radio(
-            "",
+        kwargs = dict(
             options=options,
             format_func=format_func,
-            index=index,
             key=key,
             label_visibility="collapsed",
         )
+        if key not in st.session_state:
+            kwargs["index"] = index_if_missing  # can be None to allow "no selection"
+        return st.radio("", **kwargs)
 
 def _all_item_keys():
     return [f"als_{i}" for i in [1,2,3,4,5,6,7,8,9,10,11,12]] + ["als_5_mode", "als_import_text"]
@@ -94,7 +107,7 @@ def _reset_alsfrs():
         st.session_state.pop(k, None)
 
 # =========================================================
-# ALSFRS-R OPTION TEXTS (do PDF)
+# ALSFRS-R OPTION TEXTS
 # =========================================================
 ALSFRS_ITEMS = {
     1: ("Fala", {
@@ -224,7 +237,6 @@ def build_alsfrs_output() -> tuple[bool, str]:
 
     total = sum(vals.values())
 
-    # Nome do item 5 depende do modo
     item5_label = "Alimentação" if mode5 == "5a" else "GTT"
 
     parts = []
@@ -256,10 +268,7 @@ LABEL_SYNONYMS = {
 }
 
 def _try_parse_numbered_tokens(text: str):
-    """
-    Formato tipo:
-      "1.4 / 2.3 / ... / 5a.2 / ... / 12.4"
-    """
+    # "1.4 / 2.3 / ... / 5a.2 / ... / 12.4"
     t = text or ""
     patt = re.compile(r"(?i)\b(5a|5b|10|11|12|[1-9])\s*[.:]\s*([0-4])\b")
     matches = list(patt.finditer(t))
@@ -277,42 +286,29 @@ def _try_parse_numbered_tokens(text: str):
         else:
             got[int(iid)] = score
 
-    # precisa ter ao menos 10 para ser considerado esse formato
     if len(got) < 10:
         return None
-
-    # completa por ordem se estiver faltando algo (raro), mas só aceita se ficar 12
     if not all(i in got for i in ORDER):
         return None
 
     return got, (mode5 or get_item5_mode())
 
 def _try_parse_scores_only(text: str):
-    """
-    Formato:
-      "ALSFRS: 35 = 4 / 3 / 3 / 2 / 2 / 3 / 3 / 2 / 1 / 4 / 4 / 4"
-    """
+    # "ALSFRS: 35 = 4 / 3 / ... / 4"
     t = text or ""
-    # remove cabeçalho com total, se houver
     t2 = re.sub(r"(?i)alsfrs\s*:\s*\d+\s*=", "", t).strip()
-
     scores = re.findall(r"\b([0-4])\b", t2)
     if len(scores) != 12:
         return None
-
     got = {i: int(scores[idx]) for idx, i in enumerate(ORDER)}
     return got, get_item5_mode()
 
 def _try_parse_labeled(text: str):
-    """
-    Formato:
-      "ALSFRS: 35 = Fala.4 / Salivação.3 / ... / IResp.4"
-    """
+    # "ALSFRS: 35 = Fala.4 / ... / IResp.4"
     t = text or ""
     if "/" not in t and "alsfrs" not in _norm(t):
         return None
 
-    # modo do item 5 (se aparecer "gtt" ou "5b", assume 5b)
     n = _norm(t)
     mode5 = "5b" if ("gtt" in n or "5b" in n or "gastrost" in n) else "5a"
 
@@ -320,14 +316,11 @@ def _try_parse_labeled(text: str):
     parts = [p.strip() for p in t.split("/") if p.strip()]
     for p in parts:
         pn = _norm(p)
-
-        # score = último dígito 0-4 no final do pedaço
         mm = re.search(r"([0-4])\s*$", p.strip())
         if not mm:
             continue
         score = int(mm.group(1))
 
-        # acha qual item é pelo label
         for i in ORDER:
             for syn in LABEL_SYNONYMS[i]:
                 if syn in pn:
@@ -336,7 +329,6 @@ def _try_parse_labeled(text: str):
             if i in got:
                 break
 
-        # item 5: forçar modo se reconhecer "gtt"
         if 5 in got:
             if "gtt" in pn or "5b" in pn or "gastrost" in pn:
                 mode5 = "5b"
@@ -368,7 +360,6 @@ def parse_alsfrs_import(text: str):
 
     got, mode5 = parsed
 
-    # valida
     for i in ORDER:
         if i not in got:
             return False, "Importação incompleta (faltam itens).", None
@@ -405,38 +396,23 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# Item 5 mode
-st.subheader("Configuração do item 5 (Alimentação vs GTT)")
-mode5 = st.radio(
-    "",
-    options=["Sem gastrostomia (5a → Alimentação)", "Com gastrostomia (5b → GTT)"],
-    index=0 if get_item5_mode() == "5a" else 1,
-    key="_als5_mode_ui",
-)
-st.session_state["als_5_mode"] = "5a" if mode5.startswith("Sem") else "5b"
-
-st.divider()
-st.subheader("Itens da escala")
+# default do modo do item 5
+st.session_state.setdefault("als_5_mode", "5a")
 
 def render_item(item_number: int):
     key = f"als_{item_number}"
-    current = st.session_state.get(key, None)
-    idx = None
-    if current is not None:
-        try:
-            idx = [4,3,2,1,0].index(int(current))
-        except Exception:
-            idx = None
 
     if item_number == 5:
-        m = get_item5_mode()
-        label, opts = ALSFRS_ITEMS[m]
+        mode5 = get_item5_mode()
+        label5, opts5 = ALSFRS_ITEMS[mode5]
+
+        # Item 5 (radio do score)
         inline_label_radio(
-            f"5. {label}",
+            f"5{'a' if mode5=='5a' else 'b'}. {label5}",
             options=[4,3,2,1,0],
-            format_func=lambda v: opts[v],
+            format_func=lambda v: opts5[v],
             key=key,
-            index=idx,
+            index_if_missing=None,  # sem seleção inicial
         )
         return
 
@@ -446,24 +422,36 @@ def render_item(item_number: int):
         options=[4,3,2,1,0],
         format_func=lambda v: opts[v],
         key=key,
-        index=idx,
+        index_if_missing=None,  # sem seleção inicial
     )
 
-# layout em duas colunas
-cA, cB = st.columns(2, vertical_alignment="top")
-with cA:
-    for i in [1,2,3,4,5,6]:
-        render_item(i)
-with cB:
-    for i in [7,8,9,10,11,12]:
-        render_item(i)
+# -------------------------
+# SCALE (single column)
+# -------------------------
+st.subheader("Itens da escala")
+
+for i in ORDER:
+    # Coloca a seleção 5a/5b imediatamente acima do item 5
+    if i == 5:
+        st.markdown("**Configuração do item 5**")
+        inline_label_radio(
+            "Gastrostomia (GTT)",
+            options=["5a", "5b"],
+            format_func=lambda v: "Sem gastrostomia (5a → Alimentação)" if v == "5a" else "Com gastrostomia (5b → GTT)",
+            key="als_5_mode",
+            # NÃO passamos index aqui (nem mesmo index_if_missing), porque:
+            # - st.session_state já tem default ("5a") ou valor importado
+            # - evita warning do Streamlit
+        )
+        st.markdown("---")
+
+    render_item(i)
 
 st.divider()
 st.subheader("Resultado")
 
 ok, out = build_alsfrs_output()
 if ok:
-    st.success("Escala calculada.")
     st.text_area("Copiar resultado", value=out, height=90)
 else:
     st.info(out)
@@ -517,4 +505,3 @@ if res:
     else:
         st.error(msg)
     st.session_state.pop("_als_import_result", None)
-
