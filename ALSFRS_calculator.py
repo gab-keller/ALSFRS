@@ -1,6 +1,7 @@
 import re
 import unicodedata
 from datetime import date
+
 import streamlit as st
 
 st.set_page_config(page_title="Calculadora ALSFRS-R", layout="wide")
@@ -68,9 +69,7 @@ st.markdown(
 # =========================================================
 def _strip_accents(s: str) -> str:
     s = s or ""
-    return "".join(
-        c for c in unicodedata.normalize("NFD", s) if unicodedata.category(c) != "Mn"
-    )
+    return "".join(c for c in unicodedata.normalize("NFD", s) if unicodedata.category(c) != "Mn")
 
 def _norm(s: str) -> str:
     return _strip_accents((s or "").strip().lower())
@@ -90,9 +89,7 @@ def inline_label_radio(
     """
     c_label, c_radio, _fill = st.columns([3.2, 6.0, 10.0], vertical_alignment="top")
     with c_label:
-        st.markdown(
-            f'<div class="inline-label">{label_text}</div>', unsafe_allow_html=True
-        )
+        st.markdown(f'<div class="inline-label">{label_text}</div>', unsafe_allow_html=True)
     with c_radio:
         kwargs = dict(
             options=options,
@@ -105,47 +102,11 @@ def inline_label_radio(
         return st.radio("", **kwargs)
 
 def _all_item_keys():
-    return (
-        [f"als_{i}" for i in [1,2,3,4,5,6,7,8,9,10,11,12]]
-        + ["als_5_mode", "als_import_text", "als_date_mm_yyyy"]
-    )
+    return [f"als_{i}" for i in [1,2,3,4,5,6,7,8,9,10,11,12]] + ["als_5_mode", "als_import_text"]
 
 def _reset_alsfrs():
     for k in _all_item_keys():
         st.session_state.pop(k, None)
-
-def _fmt_mm_yyyy(mm: int, yyyy: int) -> str:
-    mm = int(mm)
-    yyyy = int(yyyy)
-    mm = max(1, min(12, mm))
-    if yyyy < 1900:
-        yyyy = 1900
-    return f"{mm:02d}/{yyyy:04d}"
-
-def _default_mm_yyyy() -> str:
-    today = date.today()
-    return f"{today.month:02d}/{today.year:04d}"
-
-def _parse_mm_yyyy(s: str) -> str | None:
-    """
-    Accepts:
-      - MM/YYYY
-      - M/YYYY
-      - MM-YYYY
-      - MM.YYYY
-    Returns standardized MM/YYYY or None if invalid.
-    """
-    s = (s or "").strip()
-    m = re.match(r"^\s*(\d{1,2})\s*[/\-.]\s*(\d{4})\s*$", s)
-    if not m:
-        return None
-    mm = int(m.group(1))
-    yyyy = int(m.group(2))
-    if not (1 <= mm <= 12):
-        return None
-    if not (1900 <= yyyy <= 2100):
-        return None
-    return _fmt_mm_yyyy(mm, yyyy)
 
 # =========================================================
 # ALSFRS-R OPTION TEXTS
@@ -254,17 +215,17 @@ LABELS_FOR_OUTPUT = {
 }
 
 # =========================================================
-# EXPORT
+# EXPORT (UPDATED FORMAT: date + total at end)
 # =========================================================
 def get_item5_mode() -> str:
     mode = st.session_state.get("als_5_mode", "5a")
     return mode if mode in ("5a", "5b") else "5a"
 
-def get_mm_yyyy() -> str:
-    # if empty/invalid, fallback to current month/year
-    raw = (st.session_state.get("als_date_mm_yyyy") or "").strip()
-    parsed = _parse_mm_yyyy(raw)
-    return parsed if parsed else _default_mm_yyyy()
+def _month_year_now() -> str:
+    # Uses the server date; on Streamlit Cloud it is UTC.
+    # If you want São Paulo specifically, change to: datetime.now(ZoneInfo("America/Sao_Paulo"))
+    d = date.today()
+    return f"{d.month:02d}/{d.year}"
 
 def build_alsfrs_output() -> tuple[bool, str]:
     mode5 = get_item5_mode()
@@ -284,7 +245,6 @@ def build_alsfrs_output() -> tuple[bool, str]:
         vals[i] = iv
 
     total = sum(vals.values())
-
     item5_label = "Alimentação" if mode5 == "5a" else "GTT"
 
     parts = []
@@ -294,12 +254,14 @@ def build_alsfrs_output() -> tuple[bool, str]:
         else:
             parts.append(f"{LABELS_FOR_OUTPUT[i]}.{vals[i]}")
 
-    mm_yyyy = get_mm_yyyy()
-    out = f"ALSFRS ({mm_yyyy}): " + " / ".join(parts) + f" = {total}"
+    dt = _month_year_now()
+    # ✅ New output format:
+    # ALSFRS (02/2026): ... = 42
+    out = f"ALSFRS ({dt}): " + " / ".join(parts) + f" = {total}"
     return (True, out)
 
 # =========================================================
-# IMPORT PARSER
+# IMPORT PARSER (accepts old AND new formats)
 # =========================================================
 LABEL_SYNONYMS = {
     1: ["fala"],
@@ -341,8 +303,13 @@ def _try_parse_numbered_tokens(text: str):
 
 def _try_parse_scores_only(text: str):
     t = text or ""
-    t2 = re.sub(r"(?i)alsfrs\s*(\(\s*\d{1,2}\s*[/\-.]\s*\d{4}\s*\))?\s*:\s*", "", t).strip()
-    t2 = re.sub(r"\s*=\s*\d+\s*$", "", t2).strip()
+    # Accept:
+    # - old: "ALSFRS: 35 = 4 / 3 ..."
+    # - new: "ALSFRS (02/2026): ... = 42"
+    # => just strip the left header and keep the 12 scores in order.
+    t2 = re.sub(r"(?i)alsfrs\s*(\(\s*\d{2}\s*/\s*\d{4}\s*\))?\s*:\s*", "", t).strip()
+    # remove anything after "=" total at end, but keep item scores
+    # (we just want 12 digits 0-4 that appear in sequence)
     scores = re.findall(r"\b([0-4])\b", t2)
     if len(scores) != 12:
         return None
@@ -351,17 +318,21 @@ def _try_parse_scores_only(text: str):
 
 def _try_parse_labeled(text: str):
     t = text or ""
-    if "/" not in t and "alsfrs" not in _norm(t):
+    n_all = _norm(t)
+    if "/" not in t and "alsfrs" not in n_all:
         return None
 
-    n = _norm(t)
-    mode5 = "5b" if ("gtt" in n or "5b" in n or "gastrost" in n) else "5a"
+    mode5 = "5b" if ("gtt" in n_all or "5b" in n_all or "gastrost" in n_all) else "5a"
 
     got = {}
     parts = [p.strip() for p in t.split("/") if p.strip()]
     for p in parts:
         pn = _norm(p)
-        mm = re.search(r"([0-4])\s*$", p.strip())
+
+        # capture last 0-4 in the part (ignore trailing " = 42" if user pasted whole line)
+        mm = re.search(r"([0-4])\s*(?:=|$)", p.strip())
+        if not mm:
+            mm = re.search(r"([0-4])\s*$", p.strip())
         if not mm:
             continue
         score = int(mm.group(1))
@@ -385,19 +356,10 @@ def _try_parse_labeled(text: str):
 
     return got, mode5
 
-def _extract_date_mm_yyyy(text: str) -> str | None:
-    # ALSFRS (02/2026): ...
-    m = re.search(r"(?i)alsfrs\s*\(\s*(\d{1,2}\s*[/\-.]\s*\d{4})\s*\)\s*:", text or "")
-    if not m:
-        return None
-    return _parse_mm_yyyy(m.group(1))
-
 def parse_alsfrs_import(text: str):
     text = (text or "").strip()
     if not text:
         return False, "Cole um texto para importar.", None
-
-    parsed_date = _extract_date_mm_yyyy(text)
 
     parsed = _try_parse_numbered_tokens(text)
     if parsed is None:
@@ -408,7 +370,7 @@ def parse_alsfrs_import(text: str):
     if parsed is None:
         return (
             False,
-            "Não foi possível reconhecer o formato. Use um dos formatos suportados (com labels, só números, ou '1.4/2.3/.../12.4').",
+            "Não foi possível reconhecer o formato. Use um dos formatos suportados.",
             None,
         )
 
@@ -420,14 +382,12 @@ def parse_alsfrs_import(text: str):
         if got[i] < 0 or got[i] > 4:
             return False, "Importação inválida: valores devem ser 0–4.", None
 
-    return True, "Importação concluída.", (got, mode5, parsed_date)
+    return True, "Importação concluída.", (got, mode5)
 
-def apply_import(got: dict, mode5: str, mm_yyyy: str | None):
+def apply_import(got: dict, mode5: str):
     st.session_state["als_5_mode"] = mode5
     for i in ORDER:
         st.session_state[f"als_{i}"] = int(got[i])
-    if mm_yyyy:
-        st.session_state["als_date_mm_yyyy"] = mm_yyyy
 
 # =========================================================
 # IMPORT TRIGGER (antes da UI)
@@ -436,8 +396,8 @@ if st.session_state.get("_do_als_import", False):
     st.session_state["_do_als_import"] = False
     ok, msg, payload = parse_alsfrs_import(st.session_state.get("_als_import_raw", ""))
     if ok and payload:
-        got, mode5, mm_yyyy = payload
-        apply_import(got, mode5, mm_yyyy)
+        got, mode5 = payload
+        apply_import(got, mode5)
     st.session_state["_als_import_result"] = (ok, msg)
     st.rerun()
 
@@ -453,16 +413,6 @@ st.markdown(
 )
 
 st.session_state.setdefault("als_5_mode", "5a")
-st.session_state.setdefault("als_date_mm_yyyy", _default_mm_yyyy())
-
-# Date selector (MM/YYYY)
-st.subheader("Data (mês/ano)")
-st.text_input(
-    "Mês/Ano (MM/AAAA)",
-    key="als_date_mm_yyyy",
-    placeholder=_default_mm_yyyy(),
-    help="Formato: MM/AAAA (ex.: 02/2026). Se inválido ou vazio, usa o mês/ano atual.",
-)
 
 def render_item(item_number: int):
     key = f"als_{item_number}"
@@ -518,12 +468,7 @@ if ok:
     st.text_area("Copiar resultado", value=out, height=90)
 else:
     st.info(out)
-    st.text_area(
-        "Copiar resultado",
-        value="",
-        height=90,
-        placeholder="Preencha todos os itens para gerar o texto final.",
-    )
+    st.text_area("Copiar resultado", value="", height=90, placeholder="Preencha todos os itens para gerar o texto final.")
 
 b1, b2, _fill = st.columns([1.6, 1.2, 10.0], vertical_alignment="center")
 with b1:
@@ -541,14 +486,14 @@ st.markdown("---")
 st.subheader("Importar resultado prévio")
 
 st.text_area(
-    "Cole aqui um resultado prévio (formatos antigos ou o novo com data)",
+    "Cole aqui um resultado prévio (qualquer um dos formatos suportados)",
     key="als_import_text",
-    height=140,
+    height=120,
     placeholder=(
-        "Novo formato: ALSFRS (02/2026): Fala.3 / Salivação.2 / ... / IResp.4 = 42\n"
-        "Formato antigo (labels): ALSFRS: 35 = Fala.4 / Salivação.3 / ... / IResp.4\n"
-        "Formato antigo (só números): ALSFRS: 35 = 4 / 3 / 3 / 2 / 2 / 3 / 3 / 2 / 1 / 4 / 4 / 4\n"
-        "Formato antigo (numerado): ALSFRS: 35 = 1.4 / 2.3 / ... / 12.4"
+        "Novo formato: ALSFRS (02/2026): Fala.3 / ... / IResp.4 = 42\n"
+        "Formato antigo (labels): ALSFRS: 35 = Fala.4 / ... / IResp.4\n"
+        "Só números: ALSFRS: 35 = 4 / 3 / 3 / 2 / 2 / 3 / 3 / 2 / 1 / 4 / 4 / 4\n"
+        "Numerado: ALSFRS: 35 = 1.4 / 2.3 / ... / 12.4"
     ),
 )
 
