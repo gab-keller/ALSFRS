@@ -429,11 +429,11 @@ st.subheader("Itens da escala")
 
 for i in ORDER:
     if i == 5:
-        st.markdown("**Configuração do item 5**")
+        st.markdown("**Selecione 5a ou 5b**")
         inline_label_radio(
             "Gastrostomia (GTT)",
             options=["5a", "5b"],
-            format_func=lambda v: "Sem gastrostomia (5a → Alimentação)" if v == "5a" else "Com gastrostomia (5b → GTT)",
+            format_func=lambda v: "Sem gastrostomia (5a)" if v == "5a" else "Com gastrostomia (5b)",
             key="als_5_mode",
             index_if_missing=None,
         )
